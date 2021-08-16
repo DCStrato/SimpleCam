@@ -33,7 +33,7 @@
     <UpdateUrl>http://zaggle.com/SimpleCam/Updates/</UpdateUrl>
     <ProductName>SimpleCam</ProductName>
     <PublisherName>SimpleCam</PublisherName>
-    <ApplicationRevision>24</ApplicationRevision>
+    <ApplicationRevision>30</ApplicationRevision>
     <ApplicationVersion>1.6.0.%2a</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <CreateDesktopShortcut>true</CreateDesktopShortcut>

@@ -110,17 +110,20 @@ Class MainWindow
             Dim line = objReader.ReadLine()
 
             Dim values As String() = line.Split(New Char() {","c})
-            Preset(i) = CInt(values(0))
-            Dim delay = CInt(values(1))
+            SwitchCam1(i)
+            If IsNumeric(values(0)) Then
+                Preset(i) = CInt(values(0))
+                Dim delay = CInt(values(1))
+                If delay > 0 Then
+                    cpTimer.Stop()
+                    PTimer(i).Interval = TimeSpan.FromMilliseconds(delay * 1000)
+                    PTimer(i).Start()
+                Else
+                    Do_Preset(i, Preset(i), 2, True)
+                End If
+            End If
             objReader.Close()
             System.IO.File.Delete(FILE_NAME)
-            If delay > 0 Then
-                cpTimer.Stop()
-                PTimer(i).Interval = TimeSpan.FromMilliseconds(delay * 1000)
-                PTimer(i).Start()
-            Else
-                Do_Preset(i, Preset(i), 2, True)
-            End If
         Next
         Return
     End Sub
@@ -267,7 +270,11 @@ Class MainWindow
     Private Sub GetCamOnOff(cam As Byte)
         Dim myReadBuffer As Byte() = SendCommand(cam, {&H80, &H9, &H4, &H0, &HFF}, False)
         If myReadBuffer.Length = 4 Then
-            CamOn(cam - 1) = (myReadBuffer(2) = 2)
+            If (myReadBuffer(2) - 2) = 0 Then
+                CamOn(cam - 1) = True
+            Else
+                CamOn(cam - 1) = False
+            End If
         End If
     End Sub
 
@@ -737,6 +744,17 @@ Class MainWindow
         SetCams()
         My.Settings.Save()
     End Sub
+
+    Private Sub SwitchCam1(NewCam1)
+        If NewCam1 = Cam2 Then
+            Cam2 = Cam1
+            My.Settings.Cam2 = Cam2
+        End If
+        Cam1 = NewCam1
+        My.Settings.Cam1 = Cam1
+        SetCams()
+        My.Settings.Save()
+    End Sub
     Private Sub DoCam2Checked(sender As Object, e As RoutedEventArgs) Handles CAM21.Checked, CAM22.Checked, CAM23.Checked, CAM24.Checked, CAM25.Checked
         Dim CamB As Primitives.ToggleButton = CType(sender, Primitives.ToggleButton)
         Dim NewCam2 = CInt(CamB.Uid)
@@ -771,7 +789,7 @@ Class MainWindow
         settings.Background = Brush1
         SettingsActive = False
         Dim index As Byte
-        Dim item As String
+
         For index = 0 To 4
             My.Settings.Item("Titles")(index) = CType(Me.FindName("Camera" + (index + 1).ToString() + "Name"), TextBox).Text
             My.Settings.Item("Disabled")(index) = Not CType(Me.FindName("Camera" + (index + 1).ToString() + "Enable"), CheckBox).IsChecked
