@@ -110,17 +110,20 @@ Class MainWindow
             Dim line = objReader.ReadLine()
 
             Dim values As String() = line.Split(New Char() {","c})
-            Preset(i) = CInt(values(0))
-            Dim delay = CInt(values(1))
+            SwitchCam1(i)
+            If IsNumeric(values(0)) Then
+                Preset(i) = CInt(values(0))
+                Dim delay = CInt(values(1))
+                If delay > 0 Then
+                    cpTimer.Stop()
+                    PTimer(i).Interval = TimeSpan.FromMilliseconds(delay * 1000)
+                    PTimer(i).Start()
+                Else
+                    Do_Preset(i, Preset(i), 2, True)
+                End If
+            End If
             objReader.Close()
             System.IO.File.Delete(FILE_NAME)
-            If delay > 0 Then
-                cpTimer.Stop()
-                PTimer(i).Interval = TimeSpan.FromMilliseconds(delay * 1000)
-                PTimer(i).Start()
-            Else
-                Do_Preset(i, Preset(i), 2, True)
-            End If
         Next
         Return
     End Sub
@@ -185,46 +188,46 @@ Class MainWindow
             If My.Settings.CamIP(Cam - 1) = "X" Then Return myReadBuffer
             Dim clientSocket As New System.Net.Sockets.TcpClient()
 
-                Try 'Send Command
-                    clientSocket.Connect(My.Settings.CamIP(Cam - 1), My.Settings.CamPort(Cam - 1))
-                Catch ex As System.IO.IOException
-                Catch ex As Sockets.SocketException
-                    My.Settings.Disabled(Cam - 1) = "True"
-                    Return myReadBuffer
-                End Try
-                Dim serverStream1 As NetworkStream = clientSocket.GetStream()
-                serverStream1.Write(Command, 0, Command.Length)
-                serverStream1.Flush()
-                serverStream1.ReadTimeout = 5000
+            Try 'Send Command
+                clientSocket.Connect(My.Settings.CamIP(Cam - 1), My.Settings.CamPort(Cam - 1))
+            Catch ex As System.IO.IOException
+            Catch ex As Sockets.SocketException
+                My.Settings.Disabled(Cam - 1) = "True"
+                Return myReadBuffer
+            End Try
+            Dim serverStream1 As NetworkStream = clientSocket.GetStream()
+            serverStream1.Write(Command, 0, Command.Length)
+            serverStream1.Flush()
+            serverStream1.ReadTimeout = 5000
 
-                Try 'Receive ACK or Data
+            Try 'Receive ACK or Data
+                numberOfBytesRead = serverStream1.Read(myReadBuffer, 0, myReadBuffer.Length)
+            Catch ex As System.IO.IOException
+            Catch ex As Sockets.SocketException
+                My.Settings.Disabled(Cam - 1) = "True"
+                serverStream1.Close()
+                clientSocket.Close()
+                ReDim myReadBuffer(1)
+                Return myReadBuffer
+            End Try
+            If IsCMD And numberOfBytesRead < 4 Then 'Receive Completion
+                Try
                     numberOfBytesRead = serverStream1.Read(myReadBuffer, 0, myReadBuffer.Length)
                 Catch ex As System.IO.IOException
                 Catch ex As Sockets.SocketException
-                    My.Settings.Disabled(Cam - 1) = "True"
                     serverStream1.Close()
                     clientSocket.Close()
                     ReDim myReadBuffer(1)
                     Return myReadBuffer
                 End Try
-                If IsCMD And numberOfBytesRead < 4 Then 'Receive Completion
-                    Try
-                        numberOfBytesRead = serverStream1.Read(myReadBuffer, 0, myReadBuffer.Length)
-                    Catch ex As System.IO.IOException
-                    Catch ex As Sockets.SocketException
-                        serverStream1.Close()
-                        clientSocket.Close()
-                        ReDim myReadBuffer(1)
-                        Return myReadBuffer
-                    End Try
-                End If
-                serverStream1.Flush()
-                serverStream1.Close()
-                clientSocket.Close()
-                ReDim Preserve myReadBuffer(numberOfBytesRead - 1)
-                Return myReadBuffer
-            Else 'Do Serial
-                settings.Content = "Com Port2"
+            End If
+            serverStream1.Flush()
+            serverStream1.Close()
+            clientSocket.Close()
+            ReDim Preserve myReadBuffer(numberOfBytesRead - 1)
+            Return myReadBuffer
+        Else 'Do Serial
+            settings.Content = "Com Port2"
             Dim ComPort As New SerialPort
             If OpenComPort(My.Settings.CamCom(Cam - 1), ComPort) Then
                 ComPort.Write(Command, 0, Command.Length)
@@ -267,7 +270,11 @@ Class MainWindow
     Private Sub GetCamOnOff(cam As Byte)
         Dim myReadBuffer As Byte() = SendCommand(cam, {&H80, &H9, &H4, &H0, &HFF}, False)
         If myReadBuffer.Length = 4 Then
-            CamOn(cam - 1) = (myReadBuffer(2) = 2)
+            If (myReadBuffer(2) - 2) = 0 Then
+                CamOn(cam - 1) = True
+            Else
+                CamOn(cam - 1) = False
+            End If
         End If
     End Sub
 
@@ -737,6 +744,17 @@ Class MainWindow
         SetCams()
         My.Settings.Save()
     End Sub
+
+    Private Sub SwitchCam1(NewCam1)
+        If NewCam1 = Cam2 Then
+            Cam2 = Cam1
+            My.Settings.Cam2 = Cam2
+        End If
+        Cam1 = NewCam1
+        My.Settings.Cam1 = Cam1
+        SetCams()
+        My.Settings.Save()
+    End Sub
     Private Sub DoCam2Checked(sender As Object, e As RoutedEventArgs) Handles CAM21.Checked, CAM22.Checked, CAM23.Checked, CAM24.Checked, CAM25.Checked
         Dim CamB As Primitives.ToggleButton = CType(sender, Primitives.ToggleButton)
         Dim NewCam2 = CInt(CamB.Uid)
@@ -771,7 +789,7 @@ Class MainWindow
         settings.Background = Brush1
         SettingsActive = False
         Dim index As Byte
-        Dim item As String
+
         For index = 0 To 4
             My.Settings.Item("Titles")(index) = CType(Me.FindName("Camera" + (index + 1).ToString() + "Name"), TextBox).Text
             My.Settings.Item("Disabled")(index) = Not CType(Me.FindName("Camera" + (index + 1).ToString() + "Enable"), CheckBox).IsChecked
@@ -871,7 +889,7 @@ Class MainWindow
     End Sub
     Private Sub DoGrow()
         CamSelect = True
-        SetHeightWidth()
+        SetHeightwidth()
     End Sub
 
     Private Sub Do_Home_All(sender As Object, e As MouseButtonEventArgs) Handles homeall.PreviewMouseDoubleClick
@@ -925,7 +943,7 @@ Class MainWindow
     End Sub
 
     Private Sub DoSettingSave(sender As Object, e As RoutedEventArgs)
-        Send_Packet(Cam2, {&H88, &H30, &H2, &HFF}) 
+        Send_Packet(Cam2, {&H88, &H30, &H2, &HFF})
         DoControls()
         UpdatePresets()
         SetCams()
