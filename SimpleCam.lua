@@ -13,6 +13,11 @@ Presets = {}
 PROP_Preset_Labels = ""
 PROP_Preset_Marker = ""
 markDuplicates = true
+inTimer = false
+inRename = false
+inPreset = false
+inLoad = false
+inSwap = false
 
 local function getTempPath()
     local directorySeperator = package.config:match("([^\n]*)\n?")
@@ -51,6 +56,8 @@ end
 
 function loadPresets()
 -- Read Presets.inf file for Camera and Preset Names
+	if inLoad then return end
+    inLoad = true
 	local f = io.open(getTempPath() .. "/SCPresets.inf", "r")
 	if (f~=nil) then
 	   local str = f:read("*all")
@@ -59,9 +66,49 @@ function loadPresets()
 	   f:close()
 	end
 	SourceChanged = false
+	inLoad = false
 end
-
+function DoSourceSwap()
+	if inSwap then return end
+	inSwap = true
+	Swaps = {}
+	local f = io.open(getTempPath() .. "/SCPresetSwap.inf", "r")
+	if (f~=nil) then
+	   local str = f:read("*all")
+	   Swaps = str:split(",")
+	   f:close()
+	end
+	local ndx = ""
+	local sources = obs.obs_enum_sources()
+	for _, source in pairs(sources) do
+		local source_id = obs.obs_source_get_id(source)
+		if source_id == "Camera_Preset2" then
+			local c_name = obs.obs_source_get_name(source)
+			local settings = obs.obs_source_get_settings(source)
+			local cam = tonumber(obs.obs_data_get_string(settings, "camera"))
+			local index = obs.obs_data_get_string(settings, "index")
+			obs.obs_data_set_string(settings, "index", i)
+			if (cam ~= nil) then 
+				if cam == Swaps[1] then -- only work on target camera
+					if obs.obs_data_get_string(settings, "preset") ~= "0" then 
+						local ndx = obs.obs_data_get_string(settings, "preset") 
+						if ndx == Swaps[2] then
+						   obs.obs_data_set_string(settings, "preset",Swaps[3]) 
+						elseif ndx == Swaps[3] then
+						   obs.obs_data_set_string(settings, "preset",Swaps[2])  
+						end
+					end
+				end
+			end
+			obs.obs_data_release(settings)	
+		end
+	end
+	obs.source_list_release(sources)
+	inSwap = false
+end
 function rename_presets()
+	if inRename then return end
+	inRename = true
 	if Presets[2] ~= nil then 
 	local sources = obs.obs_enum_sources()
 	if (sources ~= nil) and (SourceChanged == false) then
@@ -140,9 +187,12 @@ function rename_presets()
 	end
 	obs.source_list_release(sources)
 	end
+	inRename = false
 end
 
 function timer_callback()
+	if inTimer then return end
+	inTimer = true
     local fname = getTempPath() .. "/SCPresets"
     local x = io.open(fname .. ".dat", "r") 
 	if (x ~= nil) then
@@ -151,27 +201,35 @@ function timer_callback()
 		os.rename(fname .. ".dat", fname .. ".inf")  -- Rename Preset.Dat to Preset.Inf
 		loadPresets()	
 		SourceChanged = true
-	else
+	end
+	if not SourceChanged then
+		local fname = getTempPath() .. "/SCPresetSwap"
+		local x = io.open(fname .. ".dat", "r") 
+		if (x ~= nil) then
+			x:close()
+			os.remove(fname .. ".inf") 					   -- Delete old Preset.Inf file
+			os.rename(fname .. ".dat", fname .. ".inf")  -- Rename Preset.Dat to Preset.Inf
+			DoSourceSwap()	
+		end
+		SourceChanged = true
 	end
 	if SourceChanged then
  	   SourceChanged = false
 	   rename_presets()									   -- ReSync any Source Names with the New 
     end
+	inTimer = false
 end
 
 function on_event(event)
+	
+	--rename_presets()
 
---	if event == obs.OBS_FRONTEND_EVENT_SCENE_CHANGED then
-	--print("Scene Change")
-	--	loadPresets()
-		rename_presets()
---	end
 end
 
 
 function script_load(settings)
-	obs.obs_frontend_add_event_callback(on_event)
-	obs.timer_add(timer_callback, 5000)
+	--obs.obs_frontend_add_event_callback(on_event)
+	obs.timer_add(timer_callback, 8000)
 end
 
 function script_update(settings)
@@ -192,7 +250,7 @@ end
 
 source_def.update = function (data, settings)
 	rename_presets()
-    Sourcechanged = true
+    --Sourcechanged = true
 end
 
 function cb_camera_changed(props, prop, settings)
@@ -228,24 +286,27 @@ source_def.get_properties = function (data)
 	obs.obs_property_list_add_string(prop_action,"On Preview Only ", "1")
 	obs.obs_property_list_add_string(prop_action,"On Both Preview and Program", "2")
 	obs.obs_properties_add_int_slider(props,"delay","Seconds Delay Before Move",0,9,1)
-
 	return props
 end
 
 function do_Preset(source, event)
-	 local settings = obs.obs_source_get_settings(source)
-	 local cam = getTempPath() .. "/SCPreset" .. obs.obs_data_get_string(settings, "camera")
-     local ndx = obs.obs_data_get_string(settings, "preset")
-     local dly = obs.obs_data_get_int(settings, "delay")	
-     obs.obs_data_release(settings)	 
-     if (event == 2) then 
-	     dly = "0"
-     end
-	 local f = io.open(cam .. ".tmp", "w")              -- Create Tmp Camera preset request file with preset and delay
-     f:write(ndx .. ", " .. dly)
-     f:close()
-	 os.rename(cam .. ".tmp", cam .. ".dat")	  -- Rename Tmp file to Camera preset command file
-	 return
+	if not inPreset then 
+		inPreset = true
+		local settings = obs.obs_source_get_settings(source)
+		local cam = getTempPath() .. "/SCPreset" .. obs.obs_data_get_string(settings, "camera")
+		local ndx = obs.obs_data_get_string(settings, "preset")
+		local dly = obs.obs_data_get_int(settings, "delay")	
+		obs.obs_data_release(settings)	 
+		if (event == 2) then 
+			dly = "0"
+		end
+		local f = io.open(cam .. ".tmp", "w")              -- Create Tmp Camera preset request ile with preset and delay
+		f:write(ndx .. ", " .. dly)
+		f:close()
+		os.rename(cam .. ".tmp", cam .. ".dat")	  -- Rename Tmp file to Camera preset command ile
+		inPreset = false
+	end
+	return
 end
 
 source_def.create = function(settings, source)
@@ -279,7 +340,9 @@ function active(cd)
     local source = obs.calldata_source(cd,"source")
 	local settings = obs.obs_source_get_settings(source)
     if (obs.obs_data_get_string(settings, "action") ~= '1') then 
-   	     do_Preset(source,1)  -- Execute the camera preset with any delay
+		if not inPreset then 
+   	        do_Preset(source,1)  -- Execute the camera preset with any delay
+		end
     end
 	obs.obs_data_release(settings)
 end
@@ -288,13 +351,13 @@ function showing(cd)
     local source = obs.calldata_source(cd,"source")
 	local settings = obs.obs_source_get_settings(source)
     if (obs.obs_data_get_string(settings, "action") ~= '0') then 
-   	     do_Preset(source,2)  -- Execute the camera preset with any delay
+		if not inPreset then
+   	        do_Preset(source,2)  -- Execute the camera preset with any delay
+		end
     end
 	obs.obs_data_release(settings)
 end
 
 loadPresets()
-
-
 obs.obs_register_source(source_def);
 

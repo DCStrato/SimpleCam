@@ -23,19 +23,37 @@ Class MainWindow
     Private CamOn() As Boolean = {False, False, False, False, False}
     Private CamOnOffButton(2) As Button
     Private CamSelect As Boolean = False
+    Private Command(5) As String
     Private SettingsActive As Boolean = False
     Private EditButton As Button
+    Private SwapButton As Button
     Private SingleCam As Boolean = False
     Private StaySingle As Boolean = False
+    Private Swap1 As Byte
+    Private SwapCam As Byte
+    Private SwapMode As Boolean = False
+    Private SwapPresetState As Boolean = False
     Private Brush1 = New SolidColorBrush(Color.FromArgb(255, &H3C, &H96, &HC6))
     Private Brush2 = New SolidColorBrush(Color.FromArgb(255, &H6C, &HC9, &H96))
     Private Brush3 = New SolidColorBrush(Color.FromArgb(255, &HC9, &H3C, &H3C)) 'off
     Private Brush4 = New SolidColorBrush(Color.FromArgb(255, &H3C, &HC9, &H3C)) 'on
+    Private PageColors() = {New SolidColorBrush(Color.FromArgb(255, &H70, &H70, &H70)),
+                            New SolidColorBrush(Color.FromArgb(255, &H70, &H0, &H0)),
+                            New SolidColorBrush(Color.FromArgb(255, &H0, &H6C, &HA0)),
+                            New SolidColorBrush(Color.FromArgb(255, &H0, &H6D, &H0)),
+                            New SolidColorBrush(Color.FromArgb(255, &H92, &H54, &H2C))}
+    Private ButtonColors() = {New SolidColorBrush(Color.FromArgb(255, &HB0, &HB0, &HB0)),
+                            New SolidColorBrush(Color.FromArgb(255, &HC0, &HB0, &HB0)),    'ffd0d0
+                            New SolidColorBrush(Color.FromArgb(255, &HA0, &HB0, &HC0)),     'A0E0FF
+                            New SolidColorBrush(Color.FromArgb(255, &HB0, &HC0, &HB0)),     'C0FFC0
+                            New SolidColorBrush(Color.FromArgb(255, &HC0, &HB0, &H70))}     'FFD080
     Private TempPath As String
     Private Shuttle1 As Boolean = False
     Private Shuttle1Direction As Byte
     Private Shuttle2Direction As Byte
     Private Shuttle2 As Boolean = False
+    Private PresetPage = 0
+    Private ShowPresetPage = 0
     Public Sub New()
         Dim Cam As Byte
         InitializeComponent()
@@ -69,6 +87,7 @@ Class MainWindow
         Next Cam
         SetCams()
         UpdatePresets()
+        updatePresetPage()
     End Sub
     Private Sub StartEffect()
         Dim Brush = New SolidColorBrush(Color.FromArgb(250, 250, 250, 10))
@@ -121,24 +140,43 @@ Class MainWindow
                 Else
                     Do_Preset(i, Preset(i), 2, True)
                 End If
+            ElseIf values(0) = "P" Then
+                PresetPage = values(1)
+                updatePresetPage()
             End If
+
             objReader.Close()
             System.IO.File.Delete(FILE_NAME)
         Next
         Return
     End Sub
     Private Sub Save_Button_Click(sender As Object, e As RoutedEventArgs) Handles Save_Button.Click
-        If (SavePreset_State = False) Then
-            SavePreset_State = True
-            Save_Button.Content = "Select Preset"
-            Rename_State = False
-            Rename_Button.Content = "Rename"
-            Rename_Button2.Content = "Rename"
+        If SettingsActive = False Then
+            If (SavePreset_State = False) Then
+                SavePreset_State = True
+                Save_Button.Content = "Select Preset"
+                Rename_State = False
+                Rename_Button.Content = "Rename"
+                Rename_Button2.Content = "Rename"
+            Else
+                SavePreset_State = False
+                Save_Button.Content = "Set"
+                Save_Button2.Content = "Set"
+            End If
         Else
-            SavePreset_State = False
-            Save_Button.Content = "Set"
-            Save_Button2.Content = "Set"
+            If (SwapPresetState = False) Then
+                SwapPresetState = True
+                Save_Button.Content = "Select"
+                Rename_State = False
+                Rename_Button.Content = "Rename"
+                Rename_Button2.Content = "Rename"
+            Else
+                SwapPresetState = False
+                Save_Button.Content = "Set"
+                Save_Button2.Content = "Set"
+            End If
         End If
+
     End Sub
     Private Sub Rename_Button_Click(sender As Object, e As RoutedEventArgs) Handles Rename_Button.Click
         If (Rename_State = False) Then
@@ -154,16 +192,30 @@ Class MainWindow
         End If
     End Sub
     Private Sub Save_Button_Click2(sender As Object, e As RoutedEventArgs) Handles Save_Button2.Click
-        If (SavePreset_State = False) Then
-            SavePreset_State = True
-            Save_Button2.Content = "Select Preset"
-            Rename_State = False
-            Rename_Button.Content = "Rename"
-            Rename_Button2.Content = "Rename"
+        If SettingsActive = False Then
+            If (SavePreset_State = False) Then
+                SavePreset_State = True
+                Save_Button2.Content = "Select Preset"
+                Rename_State = False
+                Rename_Button.Content = "Rename"
+                Rename_Button2.Content = "Rename"
+            Else
+                SavePreset_State = False
+                Save_Button.Content = "Set"
+                Save_Button2.Content = "Set"
+            End If
         Else
-            SavePreset_State = False
-            Save_Button2.Content = "Set"
-            Save_Button.Content = "Set"
+            If (SwapPresetState = False) Then
+                SwapPresetState = True
+                Save_Button2.Content = "Select"
+                Rename_State = False
+                Rename_Button.Content = "Rename"
+                Rename_Button2.Content = "Rename"
+            Else
+                SwapPresetState = False
+                Save_Button.Content = "Swap"
+                Save_Button2.Content = "Swap"
+            End If
         End If
     End Sub
     Private Sub Rename_Button_Click2(sender As Object, e As RoutedEventArgs) Handles Rename_Button2.Click
@@ -328,38 +380,71 @@ Class MainWindow
     Private Sub Do_Preset(Cam As Byte, Number As Byte, SetRecall As Byte, Remote As Boolean)
         Dim location As String = "Home"
         Dim index As String = "B"
+        Dim AdjPreset = Number
         If Cam = Cam1 Then index = "A"
-        If Number > 0 Then
-            EditButton = Me.FindName("Button" + Number.ToString() + index)
-            location = EditButton.Content
+        If Not SettingsActive Then
+            If Number > 0 Then
+                EditButton = Me.FindName("Button" + Number.ToString() + index)
+                location = EditButton.Content
+            End If
+            If Remote Then
+                index = "Moved to " & location & " by OBS"
+            Else
+                index = "Moved to " & location
+            End If
+            Command(Cam - 1) = index
+            If (Cam = Cam1) Then Command1.Content = index
+            If (Cam = Cam2) Then Command2.Content = index
         End If
-        If Remote Then
-            index = "Moved to " & location & " by OBS"
-        Else
-            index = "Moved to " & location
-        End If
-
-        If (Cam = Cam1) Then Command1.Content = index
-        If (Cam = Cam2) Then Command2.Content = index
-
         If Number = 0 Then
             Send_Packet(Cam, {&H81, &H1, &H6, &H4, &HFF}) ' Goto Home
             Return
         Else
-            StartEffect()
+            If Number < 255 Then
+                AdjPreset = (Number - 1) + (PresetPage * 14)
+                StartEffect()
+            End If
             If SetRecall = 1 Then
-                Send_Packet(Cam, {&H81, &H1, &H4, &H3F, 0, Number - 1, &HFF})  'Clear Preset
-                Send_Packet(Cam, {&H81, &H1, &H4, &H3F, 1, Number - 1, &HFF})  'Set Preset		
-                Send_Packet(Cam, {&H81, &H1, &H7E, &H1, &HB, Number - 1, &H18, &HFF}) 'Set Fast Move for Preset
+                Send_Packet(Cam, {&H81, &H1, &H4, &H3F, 0, AdjPreset, &HFF})  'Clear Preset
+                Send_Packet(Cam, {&H81, &H1, &H4, &H3F, 1, AdjPreset, &HFF})  'Set Preset		
+                Send_Packet(Cam, {&H81, &H1, &H7E, &H1, &HB, AdjPreset, &H10, &HFF}) 'Set Fast Move for Preset
             Else
-                Send_Packet(Cam, {&H81, &H1, &H4, &H3F, 2, Number - 1, &HFF})  'Do Preset		
+                Send_Packet(Cam, {&H81, &H1, &H4, &H3F, 2, AdjPreset, &HFF})  'Do Preset		
                 GetZoom(Cam)
             End If
         End If
-        Return
+    End Sub
+    Private Sub WritePresetSwap(cam, Preset1, Preset2)
+        Dim FILE_NAME As String = TempPath + "SCPresetSwap.tmp"
+        Dim Final_NAME As String = TempPath + "SCPresetSwap.dat"
+        Dim presets As String = ""
+        Dim Tries = 100
+        Dim objWriter As System.IO.StreamWriter
+        Dim index As String
+        Do While Tries > 0
+            Try
+                objWriter = New System.IO.StreamWriter(FILE_NAME)
+            Catch ex As System.IO.IOException
+                Tries -= 1
+                Threading.Thread.Sleep(500)
+                Continue Do
+            End Try
+            If Tries > 0 Then
+                presets = cam.ToString() + ", " + Preset1.ToString() + ", " + Preset2.ToString()
+                objWriter.Write(presets)
+                objWriter.Close()
+                Tries = 0
+            Else
+                objWriter.Close()
+                Tries = 0
+            End If
+        Loop
+        System.IO.File.Delete(Final_NAME)
+        System.IO.File.Move(FILE_NAME, Final_NAME)
     End Sub
     Private Sub WritePresets()
-        Dim FILE_NAME As String = TempPath + "SCPresets.dat"
+        Dim FILE_NAME As String = TempPath + "SCPresets.tmp"
+        Dim Final_NAME As String = TempPath + "SCPresets.dat"
         Dim presets As String = ""
         Dim Tries = 100
         Dim objWriter As System.IO.StreamWriter
@@ -384,7 +469,7 @@ Class MainWindow
                 For i = 1 To 5
                     index = "Cam" + i.ToString() + "Buttons"
                     For j = 1 To 14
-                        presets += My.Settings(index)(j - 1)
+                        presets += My.Settings(index)((j - 1) + (PresetPage * 14))
                         If i < 5 Or j < 14 Then
                             presets += ","
                         End If
@@ -392,12 +477,14 @@ Class MainWindow
                 Next
                 objWriter.Write(presets)
                 objWriter.Close()
-                Return
+                Tries = 0
             Else
                 objWriter.Close()
-                Return
+                Tries = 0
             End If
         Loop
+        System.IO.File.Delete(Final_NAME)
+        System.IO.File.Move(FILE_NAME, Final_NAME)
     End Sub
 
 
@@ -409,7 +496,7 @@ Class MainWindow
             Dim NewValue As String = ButtonText.Text
             Dim Cam = Cam1
             Dim P = Preset
-            If Preset > 14 Then
+            If PresetNo > 14 Then
                 Cam = Cam2
                 P -= 14
             End If
@@ -421,7 +508,7 @@ Class MainWindow
             ButtonText.Visibility = Visibility.Hidden
             If NewValue <> "" Then
                 If NewValue.Length > 13 Then NewValue = NewValue.Substring(0, 13)
-                My.Settings.PropertyValues.Item(indexLabel).PropertyValue(P - 1) = NewValue
+                My.Settings.PropertyValues.Item(indexLabel).PropertyValue((P - 1) + (PresetPage * 14)) = NewValue
                 My.Settings.Save()
                 EditButton.Content = NewValue
                 WritePresets()
@@ -449,6 +536,8 @@ Class MainWindow
     Private Sub Preset_Click(sender As Object, e As RoutedEventArgs) Handles Button1A.Click, Button6A.Click, Button2A.Click, Button7A.Click, Button3A.Click, Button8A.Click, Button4A.Click, Button9A.Click, Button5A.Click, Button10A.Click, Button11A.Click, Button12A.Click, Button13A.Click, Button14A.Click, Button1B.Click, Button6B.Click, Button2B.Click, Button7B.Click, Button3B.Click, Button8B.Click, Button4B.Click, Button9B.Click, Button10B.Click, Button11B.Click, Button12B.Click, Button13B.Click, Button14B.Click, Button5B.Click
         Dim Preset As String = CType(sender, Button).Uid
         Dim PresetNo As Short = CInt(Preset)
+        Dim TempName As String
+        Dim indexLabel As String
         EditButton = CType(sender, Button)
         Dim Cam = Cam1
         Dim P = Preset
@@ -456,21 +545,56 @@ Class MainWindow
             P -= 14
             Cam = Cam2
         End If
-        If Rename_State Then
-            Grid.SetRow(ButtonText, Grid.GetRow(EditButton))
-            Grid.SetColumn(ButtonText, Grid.GetColumn(EditButton))
-            ButtonText.Visibility = Visibility.Visible
-            ButtonText.Text = ""
-            ButtonText.IsEnabled = True
-            ButtonText.Focus()
-            Return
-        ElseIf (SavePreset_State) Then
-            SavePreset_State = False
-            Save_Button.Content = "Set"
-            Save_Button2.Content = "Set"
-            Do_Preset(Cam, P, 1, False) 'Set Memory
+        If SwapPresetState = False Then
+            If Rename_State Then
+                Grid.SetRow(ButtonText, Grid.GetRow(EditButton))
+                Grid.SetColumn(ButtonText, Grid.GetColumn(EditButton))
+                ButtonText.Visibility = Visibility.Visible
+                ButtonText.Text = ""
+                ButtonText.IsEnabled = True
+                ButtonText.Focus()
+                Return
+            End If
+            If (SavePreset_State) Then
+                SavePreset_State = False
+                Save_Button.Content = "Set"
+                Save_Button2.Content = "Set"
+                Do_Preset(Cam, P, 1, False) 'Set Memory
+            Else
+                Do_Preset(Cam, P, 2, False) 'Recall Memory
+            End If
         Else
-            Do_Preset(Cam, P, 2, False) 'Recall Memory
+            If SwapMode = False Then
+                EditButton.Background = Brush2
+                SwapButton = EditButton
+                Swap1 = P
+                SwapMode = True
+                SwapCam = Cam
+            Else
+                If SwapCam = Cam Then
+                    indexLabel = "Cam" + Cam.ToString + "Buttons"
+                    EditButton.Background = Brush2
+                    TempName = SwapButton.Content
+                    SwapButton.Content = EditButton.Content
+                    My.Settings.PropertyValues.Item(indexLabel).PropertyValue((Swap1 - 1) + (PresetPage * 14)) = EditButton.Content
+                    My.Settings.PropertyValues.Item(indexLabel).PropertyValue((P - 1) + (PresetPage * 14)) = TempName
+                    EditButton.Content = TempName
+                    My.Settings.Save()
+                    Do_Preset(Cam, Swap1, 2, False) 'Recall Preset 1 
+                    Do_Preset(Cam, 254, 1, False) 'Save to Location 255 As Temp
+                    Do_Preset(Cam, P, 2, False) 'Recall Preset 2
+                    Do_Preset(Cam, Swap1, 1, False) 'Save to First Button Location
+                    Do_Preset(Cam, 254, 2, False) 'Recall Location 255 As Temp
+                    Do_Preset(Cam, P, 1, False) 'Save to Second Button Location
+                    EditButton.Background = ButtonColors(PresetPage)
+                    SwapButton.Background = ButtonColors(PresetPage)
+                    Save_Button.Content = "Swap"
+                    Save_Button2.Content = "Swap"
+                    SwapMode = False
+                    SwapPresetState = False
+                    WritePresetSwap(Cam, Swap1, P)
+                End If
+            End If
         End If
     End Sub
     Private Sub SetCams()
@@ -480,7 +604,8 @@ Class MainWindow
         GetCamOnOff(Cam2)
         SetOnOff(Cam1)
         SetOnOff(Cam2)
-
+        PresetPage = My.Settings.PresetPage
+        pgNo.Content = PresetPage + 1
         Dim index As String
         Dim Cam As Primitives.ToggleButton
         Dim item As String = "Cam" + Cam1.ToString() + "Buttons"
@@ -496,7 +621,7 @@ Class MainWindow
             For i = 1 To 14
                 index = "Button" + i.ToString() + P
                 EditButton = Me.FindName(index)
-                EditButton.Content = My.Settings(item)(i - 1)
+                EditButton.Content = My.Settings(item)((i - 1) + (PresetPage * 14))
             Next
         Next
         Speed1.Value = My.Settings.CamSpeed(Cam1 - 1)
@@ -556,6 +681,8 @@ Class MainWindow
                 End If
             Next
         Next
+        Command1.Content = Command(Cam1 - 1)
+        Command2.Content = Command(Cam2 - 1)
     End Sub
     Private Sub UpdatePresets()
         'set files ready
@@ -565,9 +692,10 @@ Class MainWindow
             System.IO.File.Delete(FILE_NAME)
             FILE_NAME = TempPath + "Preset" + i.ToString() + ".inf"
             System.IO.File.Delete(FILE_NAME)
-            Command1.Content = ""
-            Command2.Content = ""
+            Command(i - 1) = ""
         Next
+        Command1.Content = ""
+        Command2.Content = ""
         WritePresets()
     End Sub
     Private Function NibbleNum(X As Byte) As Byte()
@@ -732,6 +860,7 @@ Class MainWindow
         Send_Packet(Cam2, outStream)
     End Sub
 
+
     Private Sub DoCam1Checked(sender As Object, e As RoutedEventArgs) Handles CAM11.Checked, CAM12.Checked, CAM13.Checked, CAM14.Checked, CAM15.Checked
         Dim CamB As Primitives.ToggleButton = CType(sender, Primitives.ToggleButton)
         Dim NewCam1 = CInt(CamB.Uid)
@@ -785,9 +914,13 @@ Class MainWindow
         CameraSelects.Visibility = Visibility.Visible
         Configuration.Visibility = Visibility.Hidden
         SaveSettings.Visibility = Visibility.Hidden
+        Command1.Visibility = Visibility.Visible
+        Command2.Visibility = Visibility.Visible
         settings.Content = "Settings"
         settings.Background = Brush1
         SettingsActive = False
+        Save_Button.Content = "Set"
+        Save_Button2.Content = "Set"
         Dim index As Byte
 
         For index = 0 To 4
@@ -832,6 +965,7 @@ Class MainWindow
     End Function
     Private Sub DoConfig()
         Dim index As Byte
+
         For index = 0 To 4
             CType(Me.FindName("Camera" + (index + 1).ToString() + "Name"), TextBox).Text = My.Settings.Item("Titles")(index)
             CType(Me.FindName("Camera" + (index + 1).ToString() + "Enable"), CheckBox).IsChecked = My.Settings.Item("Disabled")(index) = "False"
@@ -841,14 +975,23 @@ Class MainWindow
             CType(Me.FindName("CamAdd" + (index + 1).ToString()), Slider).Value = CInt(My.Settings.Item("CamAdd")(index))
             CType(Me.FindName("SerialIP" + (index + 1).ToString()), ComboBox).SelectedIndex = CInt(My.Settings.Item("SerialIP")(index))
             SetSerialIP((index + 1).ToString, CType(Me.FindName("SerialIP" + (index + 1).ToString()), ComboBox).SelectedIndex)
+            If index = My.Settings.PresetPage Then
+                CType(Me.FindName("Page" + (index + 1).ToString()), RadioButton).IsChecked = True
+            Else
+                CType(Me.FindName("Page" + (index + 1).ToString()), RadioButton).IsChecked = False
+            End If
         Next
         Controls.Visibility = Visibility.Hidden
         CameraSelects.Visibility = Visibility.Hidden
+        Command1.Visibility = Visibility.Hidden
+        Command2.Visibility = Visibility.Hidden
         Configuration.Visibility = Visibility.Visible
         SaveSettings.Visibility = Visibility.Visible
         settings.Content = "Controls"
         settings.Background = Brush2
         SettingsActive = True
+        Save_Button.Content = "Swap"
+        Save_Button2.Content = "Swap"
         Presets1.RowDefinitions(1).Height = New GridLength(40)
         Presets.MaxHeight = 700
         Presets.MinHeight = 700
@@ -943,7 +1086,13 @@ Class MainWindow
     End Sub
 
     Private Sub DoSettingSave(sender As Object, e As RoutedEventArgs)
-        Send_Packet(Cam2, {&H88, &H30, &H2, &HFF})
+        REM Send_Packet(Cam2, {&H88, &H30, &H2, &HFF})
+        If ShowPresetPage <> PresetPage Then
+            PresetPage = ShowPresetPage
+            My.Settings.PresetPage = PresetPage
+        End If
+
+
         DoControls()
         UpdatePresets()
         SetCams()
@@ -984,5 +1133,41 @@ Class MainWindow
 
         End If
         SetOnOff(Cam)
+    End Sub
+
+    Private Sub updatePresetPage()
+        Dim j As Byte
+        Dim P As String = "A"
+        Dim item As String = "Cam" + Cam1.ToString() + "Buttons"
+        Dim index As String
+        pgNo.Content = PresetPage + 1
+        pgNo.Background = PageColors(PresetPage)
+        Save_Button.Background = PageColors(PresetPage)
+        Save_Button2.Background = PageColors(PresetPage)
+        Rename_Button.Background = PageColors(PresetPage)
+        Rename_Button2.Background = PageColors(PresetPage)
+        My.Settings.PresetPage = PresetPage
+        For j = 1 To 2
+            If j = 2 Then
+                P = "B"
+                item = "Cam" + Cam2.ToString() + "Buttons"
+            End If
+            For i = 1 To 14
+                index = "Button" + i.ToString() + P
+                EditButton = Me.FindName(index)
+                EditButton.Content = My.Settings(item)((i - 1) + (PresetPage * 14))
+                EditButton.Background = ButtonColors(PresetPage)
+            Next
+        Next
+    End Sub
+
+    Private Sub HandleChecked(sender As Object, e As RoutedEventArgs) Handles Page1.Checked, Page2.Checked, Page3.Checked, Page4.Checked, Page5.Checked
+        Dim rb As RadioButton = CType(sender, RadioButton)
+        PresetPage = CInt(rb.Uid) - 1
+        updatePresetPage()
+    End Sub
+
+    Private Sub pgNo_Click(sender As Object, e As RoutedEventArgs) Handles pgNo.Click
+        WritePresets()
     End Sub
 End Class
