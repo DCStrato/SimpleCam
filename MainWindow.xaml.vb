@@ -161,7 +161,6 @@ Class MainWindow
                 PresetPage = values(1)
                 updatePresetPage()
             End If
-
             objReader.Close()
             System.IO.File.Delete(FILE_NAME)
         Next
