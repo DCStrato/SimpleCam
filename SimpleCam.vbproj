@@ -20,7 +20,7 @@
     <IsWebBootstrapper>false</IsWebBootstrapper>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
-    <PublishUrl>C:\Users\willi\source\repos\WpfApp2\publish\</PublishUrl>
+    <PublishUrl>C:\Users\willi\SimpleCam\</PublishUrl>
     <Install>true</Install>
     <InstallFrom>Disk</InstallFrom>
     <UpdateEnabled>false</UpdateEnabled>
@@ -33,7 +33,7 @@
     <UpdateUrl>http://zaggle.com/SimpleCam/Updates/</UpdateUrl>
     <ProductName>SimpleCam</ProductName>
     <PublisherName>SimpleCam</PublisherName>
-    <ApplicationRevision>30</ApplicationRevision>
+    <ApplicationRevision>34</ApplicationRevision>
     <ApplicationVersion>1.6.0.%2a</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <CreateDesktopShortcut>true</CreateDesktopShortcut>
